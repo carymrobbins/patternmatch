@@ -1,5 +1,5 @@
 from abc import ABCMeta
-from itertools import izip, islice
+from itertools import izip, islice, tee
 
 
 class PatternMatchedFunction(object):
@@ -9,7 +9,15 @@ class PatternMatchedFunction(object):
 
     @classmethod
     def is_special_type(cls, t):
-        return special_type in getattr(t, '__bases__', ())
+        """
+        Determine if t, or any of its ancestors, are a special_type
+        """
+        if t == special_type:
+            return True
+        else:
+            for base in getattr(t, '__bases__', ()):
+                if cls.is_special_type(base):
+                    return True
 
     def __call__(self, *args, **kwargs):
         for function, pattern in self._defs:
@@ -26,6 +34,7 @@ class PatternMatchedFunction(object):
                             if pattern_arg.matches():
                                 args[i] = pattern_arg.parse()
                             else:
+                                match_found = False
                                 break
                     else:
                         match_found = False
@@ -94,28 +103,50 @@ class special_type(object):
     def matches(self):
         return True
 
+class special_types(object):
+    class empty_iter(special_type):
+        def matches(self):
+            try:
+                it = iter(self._arg)
+            except TypeError:
+                # Not an iterator
+                return False
+            try:
+                it.next()
+                # Not empty
+                return False
+            except StopIteration:
+                return True
 
-class head_tail(special_type):
-    """Passes an iterable as a tuple (head, iter(tail))"""
-    def __init__(self, arg):
-        super(head_tail, self).__init__(arg)
-        self._arg_parsed = False
 
-    def parse(self):
-        if self._arg_parsed:
+    class head_tail(special_type):
+        """Passes an iterable as a tuple (head, iter(tail))"""
+        def __init__(self, arg):
+            super(special_types.head_tail, self).__init__(arg)
+            self._arg_parsed = False
+
+        def parse(self):
+            if self._arg_parsed:
+                return self._cached_arg
+            else:
+                it, _ = tee(self._arg)
+                self._cached_arg = (it.next(), it)
+                self._arg_parsed = True
+                return self._cached_arg
+
+        def matches(self):
+            try:
+                self.parse()
+                return True
+            except (StopIteration, ValueError):
+                return False
+
+    class head_tail_list(head_tail):
+        """Evaluates the arg to a list before processing"""
+        def __init__(self, arg):
+            super(special_types.head_tail_list, self).__init__(list(arg))
+
+        def parse(self):
+            super(special_types.head_tail_list, self).parse()
+            self._cached_arg = (self._cached_arg[0], list(self._cached_arg[1]))
             return self._cached_arg
-        else:
-            # it = iter(self._arg)
-            # self._cached_arg = (it.next(), it)
-            if len(self._arg) < 2:
-                raise IndexError
-            self._cached_arg = (self._arg[0], self._arg[1:])
-            self._arg_parsed = True
-            return self._cached_arg
-
-    def matches(self):
-        try:
-            self.parse()
-            return True
-        except IndexError:
-            return False

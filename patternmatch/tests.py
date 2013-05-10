@@ -1,5 +1,5 @@
 import unittest
-from patternmatch import pattern_match as pm, head_tail
+from patternmatch import pattern_match as pm, special_types as st
 
 class PatternMatchTest(unittest.TestCase):
 
@@ -86,22 +86,46 @@ class PatternMatchTest(unittest.TestCase):
                           rsum, [1, 2, 3])
 
     def testHeadTail(self):
-        @pm(head_tail)
+        @pm(st.head_tail)
+        def f((x, xs)):
+            return x, list(xs)
+
+        self.assertEqual(f([1, 2, 3]), (1, [2, 3]))
+
+    def testHeadTailList(self):
+        @pm(st.head_tail_list)
         def f((x, xs)):
             return x, xs
 
         self.assertEqual(f([1, 2, 3]), (1, [2, 3]))
 
-#     def testHeadTailRecursion(self):
-#         @pm([])
-#         def rproduct(x):
-#             return 1
-#
-#         @pm(head_tail)
-#         def rproduct((x, xs)):
-#             return x * rproduct(xs)
-#
-#         self.assertEqual(rproduct([2, 3, 4]), 24)
+    def testEmptyIter(self):
+        @pm(st.empty_iter)
+        def f(x):
+            return 'empty iterable'
+
+        @pm(int)
+        def f(x):
+            return 'int'
+
+        self.assertEqual(f(1), 'int')
+        for iterable in ([], (), set(), ''):
+            try:
+                self.assertEqual(f(iterable), 'empty iterable')
+            except (AssertionError, pm.NonExhaustivePatternError):
+                raise AssertionError('{0!r} was not considered an '
+                                     'empty iterable'.format(iterable))
+
+    def testHeadTailRecursion(self):
+        @pm(st.empty_iter)
+        def rproduct(_):
+            return 1
+
+        @pm(st.head_tail)
+        def rproduct((x, xs)):
+            return x * rproduct(xs)
+
+        self.assertEqual(rproduct([2, 3, 4]), 24)
 
 
 if __name__ == '__main__':
