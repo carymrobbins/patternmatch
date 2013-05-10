@@ -2,40 +2,14 @@ from abc import ABCMeta
 from itertools import izip, islice
 
 
-class special_type(object):
-    """Abstract base class for creating special_types"""
-    __metaclass__ = ABCMeta
-
-    @classmethod
-    def parse_arg(cls, arg):
-        return arg
-
-    @classmethod
-    def matches(cls, arg):
-        return True
-
-
-class special_types(object):
-    class head_tail(special_type):
-        """Passes an iterable as a tuple (head, iter(tail))"""
-        @classmethod
-        def parse_arg(cls, arg):
-            it = iter(arg)
-            return (it.next(), it)
-
-        @classmethod
-        def match(cls, (head, tail)):
-            class head_tail_match(special_type):
-                @classmethod
-                def matches(cls, (arg_head, arg_tail)):
-                    return head == arg_head and tail == arg_tail
-            return head_tail_match
-
-
 class PatternMatchedFunction(object):
     def __init__(self, name, defs):
         self.__name__ = name
         self._defs = defs
+
+    @classmethod
+    def is_special_type(cls, t):
+        return special_type in getattr(t, '__bases__', ())
 
     def __call__(self, *args, **kwargs):
         for function, pattern in self._defs:
@@ -47,8 +21,12 @@ class PatternMatchedFunction(object):
                 match_found = True
                 for i, (pattern_item, arg) in enumerate(izip(pattern, args)):
                     if self._arg_matches(pattern_item, arg):
-                        if isinstance(pattern_item, special_type):
-                            args[i] = pattern_item.parse_arg(arg)
+                        if self.is_special_type(pattern_item):
+                            pattern_arg = pattern_item(arg)
+                            if pattern_arg.matches():
+                                args[i] = pattern_arg.parse()
+                            else:
+                                break
                     else:
                         match_found = False
                         break
@@ -63,7 +41,7 @@ class PatternMatchedFunction(object):
         try:
             if isinstance(arg, pattern_item):
                 return True
-            if isinstance(arg, special_type):
+            if self.is_special_type(pattern_item):
                 return True
         except TypeError:
             if arg == pattern_item:
@@ -99,4 +77,45 @@ class PatternMatcher(object):
     class NonExhaustivePatternError(Exception):
         pass
 
+
 pattern_match = PatternMatcher()
+
+
+class special_type(object):
+    """Abstract base class for creating special_types"""
+    __metaclass__ = ABCMeta
+
+    def __init__(self, arg):
+        self._arg = arg
+
+    def parse(self):
+        return self._arg
+
+    def matches(self):
+        return True
+
+
+class head_tail(special_type):
+    """Passes an iterable as a tuple (head, iter(tail))"""
+    def __init__(self, arg):
+        super(head_tail, self).__init__(arg)
+        self._arg_parsed = False
+
+    def parse(self):
+        if self._arg_parsed:
+            return self._cached_arg
+        else:
+            # it = iter(self._arg)
+            # self._cached_arg = (it.next(), it)
+            if len(self._arg) < 2:
+                raise IndexError
+            self._cached_arg = (self._arg[0], self._arg[1:])
+            self._arg_parsed = True
+            return self._cached_arg
+
+    def matches(self):
+        try:
+            self.parse()
+            return True
+        except IndexError:
+            return False

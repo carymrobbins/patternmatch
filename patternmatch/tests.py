@@ -1,5 +1,5 @@
 import unittest
-from patternmatch import pattern_match as pm
+from patternmatch import pattern_match as pm, head_tail
 
 class PatternMatchTest(unittest.TestCase):
 
@@ -84,6 +84,25 @@ class PatternMatchTest(unittest.TestCase):
 
         self.assertRaises(pm.NonExhaustivePatternError,
                           rsum, [1, 2, 3])
+
+    def testHeadTail(self):
+        @pm(head_tail)
+        def f((x, xs)):
+            return x, xs
+
+        self.assertEqual(f([1, 2, 3]), (1, [2, 3]))
+
+#     def testHeadTailRecursion(self):
+#         @pm([])
+#         def rproduct(x):
+#             return 1
+#
+#         @pm(head_tail)
+#         def rproduct((x, xs)):
+#             return x * rproduct(xs)
+#
+#         self.assertEqual(rproduct([2, 3, 4]), 24)
+
 
 if __name__ == '__main__':
     unittest.main()
